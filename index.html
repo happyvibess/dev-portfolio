@@ -4,27 +4,50 @@
     <meta charset="UTF-8" />
     <!-- Custom Telemetry System -->
     <style>
+      #telemetry-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 2147483647;
+        display: block !important;
+        visibility: visible !important;
+      }
       #telemetry-panel {
         position: fixed;
         bottom: 20px;
         right: 20px;
-        background: rgba(0,0,0,0.8);
-        color: #fff;
+        background: rgba(0,0,0,0.95);
+        color: #00ff00;
         padding: 15px;
         border-radius: 8px;
         font-family: monospace;
-        font-size: 12px;
+        font-size: 14px;
+        min-width: 250px;
         max-width: 300px;
-        z-index: 9999;
-        display: none;
+        pointer-events: auto;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        border: 1px solid #00ff00;
+        display: block !important;
+        opacity: 0.95;
+        z-index: 999999999;
       }
-      #telemetry-panel.visible {
-        display: block;
+      #telemetry-panel h3 {
+        margin: 0 0 10px 0;
+        color: #00ff00;
+        font-size: 16px;
+        text-align: center;
+        border-bottom: 1px solid #00ff00;
+        padding-bottom: 5px;
       }
       .telemetry-stat {
-        margin: 5px 0;
+        margin: 8px 0;
         display: flex;
         justify-content: space-between;
+        font-size: 13px;
+        text-shadow: 0 0 2px rgba(0,255,0,0.3);
       }
       #telemetry-toggle {
         position: fixed;
@@ -174,9 +197,21 @@
         }
 
         initAdminPanel() {
+          console.log('Initializing telemetry panel...');
+          console.log('Container status before panel init:', {
+            container: document.getElementById('telemetry-container'),
+            panel: document.getElementById('telemetry-panel')
+          });
           // Create panel elements
           const panel = document.createElement('div');
           panel.id = 'telemetry-panel';
+          
+          // Add to telemetry container
+          const container = document.getElementById('telemetry-container');
+          if (!container) {
+            console.error('Telemetry container not found');
+            return;
+          }
           panel.innerHTML = `
             <h3>📊 Live Telemetry</h3>
             <div class="telemetry-stat">
@@ -211,20 +246,36 @@
             toggle.style.display = panel.classList.contains('visible') ? 'none' : 'block';
           };
 
-          // Add to document when ready
-          document.addEventListener('DOMContentLoaded', () => {
-            document.body.appendChild(panel);
-            document.body.appendChild(toggle);
+          // Add panel to container and start updates
+          container.appendChild(panel);
+          console.log('Telemetry panel added to container');
             
-            // Update session duration
-            setInterval(() => {
-              this.stats.sessionDuration = Math.round((new Date() - this.startTime) / 1000);
-              this.updatePanel();
-            }, 1000);
-          });
+          // Start updating immediately
+          this.updatePanel();
+          console.log('Initial panel update complete');
+            
+          // Update session duration
+          setInterval(() => {
+            this.stats.sessionDuration = Math.round((new Date() - this.startTime) / 1000);
+            this.updatePanel();
+          }, 1000);
+
+          // Make panel always visible in development
+          panel.style.display = 'block';
+          panel.style.visibility = 'visible';
+          panel.style.opacity = '1';
+          
+          // Force immediate visibility check
+          debugTelemetry();
         }
 
         updatePanel() {
+          console.log('Updating telemetry panel...');
+          const panel = document.getElementById('telemetry-panel');
+          if (!panel) {
+            console.warn('Telemetry panel not found in DOM');
+            return;
+          }
           if (document.getElementById('telemetry-pageviews')) {
             document.getElementById('telemetry-pageviews').textContent = this.stats.pageViews;
             document.getElementById('telemetry-interactions').textContent = this.stats.interactions;
@@ -308,28 +359,80 @@
         }
       }
 
-      // Initialize telemetry with privacy prompt
-      const initTelemetry = async () => {
-        // Only initialize if user consents
-        const consent = localStorage.getItem('telemetry_consent');
-        if (consent === 'granted') {
-          window.telemetry = new Telemetry();
-        } else if (consent === null) {
-          // Ask for consent
-          const shouldTrack = confirm(
-            'This site collects anonymous usage data to improve user experience. ' +
-            'No personal information is collected. Do you consent to anonymous tracking?'
-          );
-          
-          localStorage.setItem('telemetry_consent', shouldTrack ? 'granted' : 'denied');
-          if (shouldTrack) {
-            window.telemetry = new Telemetry();
+      // Initialize telemetry after React mount
+      const waitForReactAndInit = () => {
+        console.log('Starting telemetry initialization...');
+        
+        // Create container for telemetry UI
+        let container = document.getElementById('telemetry-container');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'telemetry-container';
+          document.body.appendChild(container);
+          console.log('Telemetry container created');
+        }
+
+        // Watch for React root to be populated
+        const observer = new MutationObserver((mutations, obs) => {
+          const root = document.getElementById('root');
+          if (root && root.children.length > 0) {
+            console.log('React app detected, initializing telemetry...');
+            obs.disconnect();
+            
+            // Initialize telemetry
+            const shouldTrack = true; // Always track in development
+            if (shouldTrack) {
+              try {
+                window.telemetry = new Telemetry();
+                console.log('Telemetry initialized successfully');
+                
+                // Force immediate panel visibility
+                const panel = document.getElementById('telemetry-panel');
+                if (panel) {
+                  panel.style.display = 'block';
+                  panel.style.visibility = 'visible';
+                  panel.style.opacity = '1';
+                }
+              } catch (error) {
+                console.error('Failed to initialize telemetry:', error);
+              }
+            }
+          }
+        });
+
+        // Start observing
+        // Observe the root element
+        const root = document.getElementById('root');
+        if (!root) {
+          console.error('React root element not found');
+          return;
+        }
+        
+        observer.observe(root, {
+          childList: true,
+          subtree: true
+        });
+      };
+
+      // Initialize telemetry with retries
+      const initWithRetry = (retries = 3) => {
+        console.log(`Attempting telemetry initialization (${retries} retries left)`);
+        try {
+          waitForReactAndInit();
+        } catch (error) {
+          console.error('Error during telemetry initialization:', error);
+          if (retries > 0) {
+            setTimeout(() => initWithRetry(retries - 1), 1000);
           }
         }
       };
 
-      // Start telemetry after page load
-      window.addEventListener('load', initTelemetry);
+      // Start watching for React mount
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => initWithRetry());
+      } else {
+        initWithRetry();
+      }
     </script>
     <link rel="icon" type="image/svg+xml" href="/dev-portfolio/vite.svg" />
     <link rel="preload" as="image" href="/dev-portfolio/dev.jpg" />
@@ -380,5 +483,31 @@
   </head>
   <body>
     <div id="root"></div>
+    <div id="telemetry-container">
+      <!-- Telemetry panel will be injected here -->
+    </div>
+    <script>
+      // Debug logging for telemetry visibility
+      console.log('Initial telemetry container setup...');
+      const debugTelemetry = () => {
+        const container = document.getElementById('telemetry-container');
+        const panel = document.getElementById('telemetry-panel');
+        console.log('Telemetry container:', {
+          exists: !!container,
+          display: container?.style.display,
+          visibility: container?.style.visibility
+        });
+        console.log('Telemetry panel:', {
+          exists: !!panel,
+          display: panel?.style.display,
+          visibility: panel?.style.visibility,
+          opacity: panel?.style.opacity
+        });
+      };
+      // Check visibility after short delay
+      setTimeout(debugTelemetry, 1000);
+      // Check again after React mount
+      setTimeout(debugTelemetry, 3000);
+    </script>
   </body>
 </html>
