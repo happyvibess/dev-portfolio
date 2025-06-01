@@ -1,0 +1,33 @@
+name: Telemetry
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  process-telemetry:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.title, 'Telemetry Data')
+    
+    steps:
+      - name: Process Telemetry Data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract data from issue body
+          BODY=$(jq -r .issue.body "$GITHUB_EVENT_PATH")
+          
+          # Add timestamp
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Create telemetry entry
+          echo "$TIMESTAMP: $BODY" >> telemetry.log
+          
+          # Close the issue
+          issue_number=$(jq -r .issue.number "$GITHUB_EVENT_PATH")
+          curl -X PATCH \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"state":"closed"}' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$issue_number"
+
