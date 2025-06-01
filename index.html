@@ -3,21 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/dev-portfolio/vite.svg" />
+    <link rel="preload" as="image" href="/dev-portfolio/dev.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Developer Portfolio</title>
     <script type="module" crossorigin src="/dev-portfolio/assets/index-a4124546.js"></script>
     <link rel="stylesheet" href="/dev-portfolio/assets/index-99f96ff2.css">
     <script>
-      window.addEventListener('DOMContentLoaded', function() {
-        // Fix image paths
+      function fixImagePaths() {
         const basePath = '/dev-portfolio';
         const images = document.querySelectorAll('img');
+        let profileImageFound = false;
+
         images.forEach(img => {
-          if (img.src.includes('dev.jpg')) {
-            img.src = basePath + '/dev.jpg';
+          if (img.src.includes('dev.jpg') || img.alt?.toLowerCase().includes('profile')) {
+            profileImageFound = true;
+            const newSrc = basePath + '/dev.jpg';
+            
+            // Only update if needed
+            if (img.src !== newSrc) {
+              img.onerror = function() {
+                console.warn('Failed to load profile image:', newSrc);
+                // Retry loading after a short delay
+                setTimeout(() => {
+                  img.src = newSrc + '?retry=' + new Date().getTime();
+                }, 500);
+              };
+              img.src = newSrc;
+            }
           }
         });
-      });
+
+        if (!profileImageFound) {
+          // Try again after a short delay if no profile image was found
+          setTimeout(fixImagePaths, 500);
+        }
+      }
+
+      // Initial load
+      window.addEventListener('DOMContentLoaded', fixImagePaths);
+      
+      // Run again after React mount
+      setTimeout(fixImagePaths, 1000);
+      
+      // Backup check
+      window.addEventListener('load', fixImagePaths);
     </script>
   </head>
   <body>
