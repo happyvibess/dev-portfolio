@@ -3,6 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <!-- Custom Telemetry System -->
+    <style>
+      #telemetry-panel {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(0,0,0,0.8);
+        color: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        max-width: 300px;
+        z-index: 9999;
+        display: none;
+      }
+      #telemetry-panel.visible {
+        display: block;
+      }
+      .telemetry-stat {
+        margin: 5px 0;
+        display: flex;
+        justify-content: space-between;
+      }
+      #telemetry-toggle {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        z-index: 9998;
+      }
+    </style>
     <script>
       class Telemetry {
         constructor() {
@@ -16,6 +52,16 @@
           this.privacySettings = this.loadPrivacySettings();
           this.retryAttempts = 3;
           this.retryDelay = 1000;
+          this.stats = {
+            pageViews: 0,
+            interactions: 0,
+            errors: 0,
+            scrollDepth: 0,
+            sessionDuration: 0
+          };
+          
+          // Initialize admin panel
+          this.initAdminPanel();
           
           // Initialize
           this.trackPageView();
@@ -127,7 +173,85 @@
           }
         }
 
+        initAdminPanel() {
+          // Create panel elements
+          const panel = document.createElement('div');
+          panel.id = 'telemetry-panel';
+          panel.innerHTML = `
+            <h3>📊 Live Telemetry</h3>
+            <div class="telemetry-stat">
+              <span>Page Views:</span>
+              <span id="telemetry-pageviews">0</span>
+            </div>
+            <div class="telemetry-stat">
+              <span>Interactions:</span>
+              <span id="telemetry-interactions">0</span>
+            </div>
+            <div class="telemetry-stat">
+              <span>Scroll Depth:</span>
+              <span id="telemetry-scroll">0%</span>
+            </div>
+            <div class="telemetry-stat">
+              <span>Errors:</span>
+              <span id="telemetry-errors">0</span>
+            </div>
+            <div class="telemetry-stat">
+              <span>Session:</span>
+              <span id="telemetry-session">0s</span>
+            </div>
+          `;
+          
+          // Create toggle button
+          const toggle = document.createElement('button');
+          toggle.id = 'telemetry-toggle';
+          toggle.textContent = '📊';
+          toggle.title = 'Toggle Telemetry Panel';
+          toggle.onclick = () => {
+            panel.classList.toggle('visible');
+            toggle.style.display = panel.classList.contains('visible') ? 'none' : 'block';
+          };
+
+          // Add to document when ready
+          document.addEventListener('DOMContentLoaded', () => {
+            document.body.appendChild(panel);
+            document.body.appendChild(toggle);
+            
+            // Update session duration
+            setInterval(() => {
+              this.stats.sessionDuration = Math.round((new Date() - this.startTime) / 1000);
+              this.updatePanel();
+            }, 1000);
+          });
+        }
+
+        updatePanel() {
+          if (document.getElementById('telemetry-pageviews')) {
+            document.getElementById('telemetry-pageviews').textContent = this.stats.pageViews;
+            document.getElementById('telemetry-interactions').textContent = this.stats.interactions;
+            document.getElementById('telemetry-scroll').textContent = this.stats.scrollDepth + '%';
+            document.getElementById('telemetry-errors').textContent = this.stats.errors;
+            document.getElementById('telemetry-session').textContent = this.stats.sessionDuration + 's';
+          }
+        }
+
         trackEvent(category, action, label = null, value = null) {
+          // Update stats
+          switch(category) {
+            case 'page':
+              this.stats.pageViews++;
+              break;
+            case 'interaction':
+              this.stats.interactions++;
+              break;
+            case 'scroll':
+              this.stats.scrollDepth = parseInt(label) || 0;
+              break;
+            case 'error':
+              this.stats.errors++;
+              break;
+          }
+          this.updatePanel();
+
           const event = {
             type: 'event',
             category,
