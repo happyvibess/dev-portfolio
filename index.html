@@ -2,45 +2,233 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Google Analytics 4 -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <!-- Custom Telemetry System -->
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      
-      // Replace G-XXXXXXXXXX with your actual GA4 measurement ID
-      gtag('config', 'G-XXXXXXXXXX', {
-        page_path: window.location.pathname,
-        debug_mode: true
-      });
+      class Telemetry {
+        constructor() {
+          this.owner = 'happyvibess';
+          this.repo = 'dev-portfolio';
+          this.events = [];
+          this.scrollDepthTriggered = {};
+          this.sessionId = this.generateSessionId();
+          this.startTime = new Date();
+          this.queueSize = 5; // Number of events to batch before sending
+          this.privacySettings = this.loadPrivacySettings();
+          this.retryAttempts = 3;
+          this.retryDelay = 1000;
+          
+          // Initialize
+          this.trackPageView();
+          this.setupEventListeners();
+          
+          // Send events periodically
+          setInterval(() => this.sendEvents(), 30000);
+        }
 
-      // Track custom events
-      document.addEventListener('DOMContentLoaded', function() {
-        // Track clicks on project links
-        document.addEventListener('click', function(e) {
-          if (e.target.matches('a[href*="github.com"]')) {
-            gtag('event', 'click', {
-              'event_category': 'Project',
-              'event_label': e.target.href
-            });
+        generateSessionId() {
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+          });
+        }
+
+        async sendEvents() {
+          if (this.events.length === 0) return;
+          
+          const token = await this.getToken();
+          if (!token) {
+            console.warn('Telemetry: No valid token available');
+            return;
           }
-        });
 
-        // Track scroll depth
-        let scrollDepthTriggered = {};
-        window.addEventListener('scroll', function() {
-          let scrollPercent = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100;
-          [25, 50, 75, 90].forEach(function(depth) {
-            if (scrollPercent >= depth && !scrollDepthTriggered[depth]) {
-              scrollDepthTriggered[depth] = true;
-              gtag('event', 'scroll_depth', {
-                'depth': depth + '%'
-              });
+          const events = [...this.events];
+          this.events = [];
+
+          try {
+            const data = {
+              sessionId: this.sessionId,
+              timestamp: new Date().toISOString(),
+              events: events.filter(e => this.shouldCollect(e.type)),
+              userAgent: navigator.userAgent,
+              screenSize: `${window.innerWidth}x${window.innerHeight}`,
+              referrer: document.referrer || 'direct',
+              language: navigator.language
+            };
+
+            const sanitizedData = this.sanitizeData(data);
+            
+            const issueBody = {
+              title: `Telemetry Data: ${new Date().toISOString()}`,
+              body: JSON.stringify(sanitizedData, null, 2)
+            };
+
+            const response = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/issues`, {
+              method: 'POST',
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': `Bearer ${this.getToken()}`
+              },
+              body: JSON.stringify(issueBody)
+            });
+
+            if (!response.ok) {
+              console.warn('Failed to send telemetry data:', await response.text());
+            }
+          } catch (error) {
+            console.warn('Error sending telemetry:', error);
+          }
+        }
+
+        loadPrivacySettings() {
+          const defaultSettings = {
+            allowPageViews: true,
+            allowInteractions: true,
+            allowPerformance: true,
+            allowErrors: true,
+            anonymizeIp: true
+          };
+          
+          try {
+            const saved = localStorage.getItem('telemetry_privacy');
+            return saved ? JSON.parse(saved) : defaultSettings;
+          } catch (e) {
+            return defaultSettings;
+          }
+        }
+
+        async validateToken(token) {
+          if (!token) return false;
+          
+          try {
+            const response = await fetch(`https://api.github.com/user`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+              }
+            });
+            
+            return response.ok;
+          } catch (e) {
+            return false;
+          }
+        }
+
+        async getToken() {
+          const token = localStorage.getItem('telemetry_token');
+          if (!token) return null;
+
+          // Validate token with exponential backoff
+          for (let i = 0; i < this.retryAttempts; i++) {
+            const isValid = await this.validateToken(token);
+            if (isValid) return token;
+            
+            await new Promise(resolve => setTimeout(resolve, this.retryDelay * Math.pow(2, i)));
+          }
+
+          // Token is invalid, remove it
+          localStorage.removeItem('telemetry_token');
+          return null;
+        }
+
+        sanitizeData(data) {
+          if (this.privacySettings.anonymizeIp) {
+            // Remove IP addresses
+            if (data.userAgent) {
+              data.userAgent = data.userAgent.replace(/\d+\.\d+\.\d+\.\d+/g, '[REDACTED]');
+            }
+          }
+          return data;
+        }
+
+        shouldCollect(eventType) {
+          switch(eventType) {
+            case 'pageview': return this.privacySettings.allowPageViews;
+            case 'interaction': return this.privacySettings.allowInteractions;
+            case 'performance': return this.privacySettings.allowPerformance;
+            case 'error': return this.privacySettings.allowErrors;
+            default: return false;
+          }
+        }
+
+        trackEvent(category, action, label = null, value = null) {
+          const event = {
+            type: 'event',
+            category,
+            action,
+            label,
+            value,
+            timestamp: new Date().toISOString()
+          };
+
+          this.events.push(event);
+          
+          if (this.events.length >= this.queueSize) {
+            this.sendEvents();
+          }
+        }
+
+        trackPageView() {
+          this.trackEvent('page', 'view', window.location.pathname);
+        }
+
+        trackError(error) {
+          this.trackEvent('error', error.message, error.stack);
+        }
+
+        setupEventListeners() {
+          // Track clicks
+          document.addEventListener('click', (e) => {
+            if (e.target.matches('a, button')) {
+              this.trackEvent('interaction', 'click', e.target.textContent);
             }
           });
-        });
-      });
+
+          // Track scroll depth
+          window.addEventListener('scroll', () => {
+            const scrollPercent = (window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100;
+            [25, 50, 75, 90].forEach(depth => {
+              if (scrollPercent >= depth && !this.scrollDepthTriggered[depth]) {
+                this.scrollDepthTriggered[depth] = true;
+                this.trackEvent('scroll', 'depth', `${depth}%`);
+              }
+            });
+          });
+
+          // Track performance
+          window.addEventListener('load', () => {
+            const timing = performance.timing;
+            this.trackEvent('performance', 'load', 'page_load', timing.loadEventEnd - timing.navigationStart);
+          });
+
+          // Track errors
+          window.addEventListener('error', (e) => {
+            this.trackError(e.error);
+          });
+        }
+      }
+
+      // Initialize telemetry with privacy prompt
+      const initTelemetry = async () => {
+        // Only initialize if user consents
+        const consent = localStorage.getItem('telemetry_consent');
+        if (consent === 'granted') {
+          window.telemetry = new Telemetry();
+        } else if (consent === null) {
+          // Ask for consent
+          const shouldTrack = confirm(
+            'This site collects anonymous usage data to improve user experience. ' +
+            'No personal information is collected. Do you consent to anonymous tracking?'
+          );
+          
+          localStorage.setItem('telemetry_consent', shouldTrack ? 'granted' : 'denied');
+          if (shouldTrack) {
+            window.telemetry = new Telemetry();
+          }
+        }
+      };
+
+      // Start telemetry after page load
+      window.addEventListener('load', initTelemetry);
     </script>
     <link rel="icon" type="image/svg+xml" href="/dev-portfolio/vite.svg" />
     <link rel="preload" as="image" href="/dev-portfolio/dev.jpg" />
