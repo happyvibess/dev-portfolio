@@ -7,9 +7,20 @@
     <title>Developer Portfolio</title>
     <script type="module" crossorigin src="/dev-portfolio/assets/index-a4124546.js"></script>
     <link rel="stylesheet" href="/dev-portfolio/assets/index-99f96ff2.css">
+    <script>
+      window.addEventListener('DOMContentLoaded', function() {
+        // Fix image paths
+        const basePath = '/dev-portfolio';
+        const images = document.querySelectorAll('img');
+        images.forEach(img => {
+          if (img.src.includes('dev.jpg')) {
+            img.src = basePath + '/dev.jpg';
+          }
+        });
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    
   </body>
 </html>
